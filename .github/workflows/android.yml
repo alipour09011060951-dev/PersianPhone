@@ -1,29 +1,43 @@
+
 name: Build Android APK
 
 on:
-workflow_dispatch:
-push:
-paths:
-- 'SIP_Android_App_Project.zip'
-- '.github/workflows/android.yml'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'SIP_Android_App_Project.zip'
+      - '.github/workflows/android.yml'
+
+permissions:
+  contents: read
 
 jobs:
-build:
-runs-on: ubuntu-latest
-steps:
-- name: Checkout repository
-uses: actions/checkout@v4
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-```
-  - name: Set up Java
-    uses: actions/setup-java@v4
-    with:
-      distribution: temurin
-      java-version: '17'
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
 
-  - name: Extract Android project
-    run: |
-      unzip -o SIP_Android_App_Project.zip -d project
-      find project -maxdepth 4 -type f | head -100
-      echo "Project files extracted"
-```
+      - name: Extract project
+        run: |
+          unzip -o SIP_Android_App_Project.zip -d project
+          ls -la project/SIP_Android_App_Project
+
+      - name: Build debug APK
+        run: |
+          cd project/SIP_Android_App_Project
+          gradle wrapper --gradle-version 8.9
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersianPhone-APK
+          path: project/SIP_Android_App_Project/app/build/outputs/apk/debug/app-debug.apk
