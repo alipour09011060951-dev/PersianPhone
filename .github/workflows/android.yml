@@ -4,9 +4,8 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    paths:
-      - 'SIP_Android_App_Project.zip'
-      - '.github/workflows/android.yml'
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -24,20 +23,34 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Extract project
+      - name: Find and extract project ZIP
         run: |
-          unzip -o SIP_Android_App_Project.zip -d project
-          ls -la project/SIP_Android_App_Project
+          ZIP_PATH="$(find . -type f -iname '*.zip' -not -path './.git/*' | head -n 1)"
+          if [ -z "$ZIP_PATH" ]; then
+            echo "ERROR: No ZIP file found in repository"
+            find . -maxdepth 4 -type f
+            exit 1
+          fi
+          echo "Found ZIP: $ZIP_PATH"
+          unzip -o "$ZIP_PATH" -d project
+          find project -maxdepth 5 -type f
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Build debug APK
         run: |
-          cd project/SIP_Android_App_Project
-          gradle wrapper --gradle-version 8.9
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          PROJECT_DIR="$(find project -type f -name settings.gradle -print -quit | xargs dirname)"
+          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle" ]; then
+            echo "ERROR: Android Gradle project not found"
+            find project -maxdepth 5 -type f
+            exit 1
+          fi
+          cd "$PROJECT_DIR"
+          gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: PersianPhone-APK
-          path: project/SIP_Android_App_Project/app/build/outputs/apk/debug/app-debug.apk
+          path: project/**/app/build/outputs/apk/debug/app-debug.apk
