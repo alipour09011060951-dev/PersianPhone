@@ -1,5 +1,5 @@
 
-name: Build Android APK
+name: Build PersianPhone APK
 
 on:
   workflow_dispatch:
@@ -13,8 +13,9 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
+      - name: Download repository files
         uses: actions/checkout@v4
 
       - name: Set up Java
@@ -23,34 +24,71 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Find and extract project ZIP
+      - name: Find and extract ZIP
         run: |
           ZIP_PATH="$(find . -type f -iname '*.zip' -not -path './.git/*' | head -n 1)"
+
           if [ -z "$ZIP_PATH" ]; then
             echo "ERROR: No ZIP file found in repository"
             find . -maxdepth 4 -type f
             exit 1
           fi
+
           echo "Found ZIP: $ZIP_PATH"
+          mkdir -p project
           unzip -o "$ZIP_PATH" -d project
-          find project -maxdepth 5 -type f
+
+      - name: Find Android project
+        id: find_project
+        run: |
+          SETTINGS_FILE="$(find project -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "ERROR: No Gradle settings file found"
+            find project -maxdepth 7 -type f | sort
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
+          echo "Project directory: $PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build debug APK
+        env:
+          PROJECT_DIR: ${{ steps.find_project.outputs.project_dir }}
         run: |
-          PROJECT_DIR="$(find project -type f -name settings.gradle -print -quit | xargs dirname)"
-          if [ -z "$PROJECT_DIR" ] || [ ! -f "$PROJECT_DIR/app/build.gradle" ]; then
-            echo "ERROR: Android Gradle project not found"
-            find project -maxdepth 5 -type f
+          cd "$PROJECT_DIR"
+
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
+
+      - name: Find and upload APK
+        if: success()
+        run: |
+          APK_PATH="$(find project -type f -path '*/build/outputs/apk/debug/*.apk' -print -quit)"
+
+          if [ -z "$APK_PATH" ]; then
+            echo "ERROR: Build completed but APK was not found"
+            find project -type f | sort
             exit 1
           fi
-          cd "$PROJECT_DIR"
-          gradle assembleDebug
 
-      - name: Upload APK
+          echo "APK found: $APK_PATH"
+          mkdir -p output
+          cp "$APK_PATH" output/PersianPhone-debug.apk
+
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: PersianPhone-APK
-          path: project/**/app/build/outputs/apk/debug/app-debug.apk
+          path: output/PersianPhone-debug.apk
+          if-no-files-found: error
